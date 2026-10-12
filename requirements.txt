@@ -1,0 +1,9 @@
+# Comunicación entre procesos
+pyzmq>=25
+
+# Pruebas unitarias (casos U1, U2)
+pytest>=7
+
+# Solo para metricas.py (análisis y gráficas)
+pandas>=1.5
+matplotlib>=3.5

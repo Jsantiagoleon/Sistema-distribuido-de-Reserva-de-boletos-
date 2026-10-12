@@ -1,16 +1,8 @@
 """
-Crea la base de datos inicial (datos/events.json) · se ejecuta en la VM3.
+Crea events.json con los datos iniciales · VM3
 
-Datos iniciales del enunciado:
-    - 50 eventos en noviembre de 2026.
-    - E1 a E20 tienen dos ocurrencias; E21 a E50, una.
-    - 100 asientos por ocurrencia, todos libres.
-    - Total: 70 ocurrencias y 7.000 asientos.
-
-Se usa también para reiniciar la BD antes de cada escenario de pruebas.
-
-Ejecución:
-    python3 generar_bd.py
+50 eventos en noviembre de 2026: E1 a E20 con dos ocurrencias y E21 a E50
+con una, todas con 100 asientos libres (70 ocurrencias, 7.000 asientos).
 """
 
 

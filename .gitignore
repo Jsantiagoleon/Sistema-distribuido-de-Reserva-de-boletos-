@@ -1,20 +1,3 @@
-# Python
 __pycache__/
-*.pyc
-.venv/
-venv/
-.pytest_cache/
-
-# Datos generados (se crean con generar_bd.py en cada VM)
-datos/*
-!datos/.gitkeep
-
-# Resultados de las corridas (se versionan solo los que se elijan para el informe)
-resultados/*
-!resultados/.gitkeep
-
-# Editores y sistema
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+events.json
+resultados/

@@ -1,5 +1,1 @@
-# Los scripts de bash deben quedar con saltos de línea de Linux (LF),
-# aunque se editen y suban desde Windows; con CRLF fallan en Ubuntu.
 *.sh text eol=lf
-*.py text eol=lf
-*.md text eol=lf

@@ -52,3 +52,17 @@ python3 ver_bd.py
 ```
 
 Los tiempos de cada cliente quedan en `resultados/` de la VM1 y los del Gestor en `resultados/` de la VM2.
+
+## Métricas
+
+En la VM1, después de cada escenario (usar la carpeta que imprime el script):
+
+```bash
+python3 metricas.py clientes resultados/esc3_AAAAMMDD_HHMMSS
+```
+
+En la VM2:
+
+```bash
+python3 metricas.py gestor resultados/gt_metricas.csv
+```

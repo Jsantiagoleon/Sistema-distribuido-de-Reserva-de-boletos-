@@ -8,8 +8,8 @@ Las IP de las VMs se leen de variables de entorno. Si no existen se usa
 import os
 
 # Máquinas (VM1 = clientes, VM2 = GT y RMC, VM3 = Persistencia)
-IP_VM2 = os.getenv("SRB_IP_VM2", "127.0.0.1")
-IP_VM3 = os.getenv("SRB_IP_VM3", "127.0.0.1")
+IP_VM2 = os.getenv("SRB_IP_VM2", "10.43.100.247")
+IP_VM3 = os.getenv("SRB_IP_VM3", "10.43.99.241")
 
 # Puertos
 PUERTO_PERSISTENCIA = 5555   # VM3 · Persistencia · REP

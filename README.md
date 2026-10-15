@@ -1,68 +1,88 @@
 # SRB · Sistema de Reserva de Boletos
 
+Primera entrega: arquitectura base con operaciones de consulta y reserva, desplegada en tres máquinas virtuales.
+
+| VM | IP | Programas |
+|---|---|---|
+| VM1 | — | `cliente.py`, `vm1_escenario.sh` |
+| VM2 | 10.43.100.247 | `servicio_rmc.py`, `gestor_transacciones.py` |
+| VM3 | 10.43.99.241 | `generar_bd.py`, `servicio_persistencia.py`, `ver_bd.py` |
+
 ## Requisitos
 
-Python 3 y pyzmq en las tres VMs:
+En las tres VMs (Ubuntu):
 
 ```bash
-pip3 install -r requirements.txt
+sudo apt install -y python3 python3-zmq
 ```
 
-## Configurar las IPs
+Copiar la carpeta del proyecto a las tres VMs. Las IP de la VM2 y la VM3 están en `config.py`.
 
-En la VM1 y la VM2, agregar al final de `~/.bashrc` y abrir una terminal nueva:
+En la VM1, preparar el script de escenarios:
 
 ```bash
-export SRB_IP_VM2=<IP de la VM2>
-export SRB_IP_VM3=<IP de la VM3>
+sed -i 's/\r$//' vm1_escenario.sh
+chmod +x vm1_escenario.sh
 ```
 
 ## Ejecución
 
-Cada servicio se ejecuta en su propia terminal, en este orden:
+Cada servicio se ejecuta en su propia terminal, en este orden.
 
-**VM3**
+**1. VM3**
 
 ```bash
 python3 generar_bd.py
-python3 ver_bd.py
 python3 servicio_persistencia.py
 ```
 
-**VM2**
+**2. VM2, terminal 1**
 
 ```bash
 python3 servicio_rmc.py
+```
+
+**3. VM2, terminal 2**
+
+```bash
 python3 gestor_transacciones.py
 ```
 
-**VM1**
+**4. VM1**
 
 ```bash
-chmod +x vm1_escenario.sh
 ./vm1_escenario.sh 3
 ./vm1_escenario.sh 5
 ./vm1_escenario.sh 8
 ```
 
-Para ver el estado final de la base de datos, en la VM3:
+Antes de cada escenario, reiniciar la base de datos en la VM3 (detener la persistencia con Ctrl+C y repetir el paso 1).
+
+## Estado de la base de datos
+
+En la VM3, en otra terminal, durante la prueba:
+
+```bash
+watch -n 2 "python3 ver_bd.py | tail -1"
+```
+
+Estado completo:
 
 ```bash
 python3 ver_bd.py
 ```
 
-Los tiempos de cada cliente quedan en `resultados/` de la VM1 y los del Gestor en `resultados/` de la VM2.
-
 ## Métricas
 
-En la VM1, después de cada escenario (usar la carpeta que imprime el script):
+VM1 (usar la carpeta que imprime el escenario):
 
 ```bash
 python3 metricas.py clientes resultados/esc3_AAAAMMDD_HHMMSS
 ```
 
-En la VM2:
+VM2:
 
 ```bash
 python3 metricas.py gestor resultados/gt_metricas.csv
+mv resultados/gt_metricas.csv resultados/gt_esc3.csv
 ```

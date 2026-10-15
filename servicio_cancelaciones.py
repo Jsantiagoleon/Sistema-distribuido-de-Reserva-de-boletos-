@@ -1,9 +1,6 @@
 """
-ServicioCancelaciones · VM2 · se implementa en la Entrega 2
+ServicioCancelaciones en vm2 entrega 3
 
-PULL connect :5559     <- GestorTransacciones (PUSH)
-REQ  connect VM3:5555  -> ServicioPersistencia (REP)
-PUB  bind :5560        -> ClienteCarga (SUB)
 """
 
 

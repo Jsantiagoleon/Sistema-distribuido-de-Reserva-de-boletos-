@@ -1,13 +1,9 @@
 """
-ServicioRMC · VM2
-
-REP bind :5556         <- GestorTransacciones (DEALER)
-REQ connect VM3:5555   -> ServicioPersistencia (REP)
+ServicioRMC en VM2
 
 Recibe una Solicitud en JSON (consulta o reserva), aplica las reglas del
 negocio pidiendo los datos a Persistencia y devuelve una Respuesta en JSON.
 
-Uso: python3 servicio_rmc.py
 """
 
 import json
@@ -25,9 +21,9 @@ class ServicioRMC:
 
     def __init__(self):
         contexto = zmq.Context()
-        self.sock_gt = contexto.socket(zmq.REP)              # REP: atiende al GT
+        self.sock_gt = contexto.socket(zmq.REP)              #REP:atiende al GT
         self.sock_gt.bind(f"tcp://*:{config.PUERTO_RMC}")
-        self.sock_persistencia = contexto.socket(zmq.REQ)    # REQ: pregunta a Persistencia
+        self.sock_persistencia = contexto.socket(zmq.REQ) #REQ:pregunta a Persistencia
         self.sock_persistencia.connect(config.DIR_PERSISTENCIA)
 
     def procesar_consulta(self, solicitud):
@@ -41,7 +37,7 @@ class ServicioRMC:
 
     def procesar_reserva(self, solicitud):
         """Consulta disponibilidad y, si hay cupo, pide la confirmación a Persistencia."""
-        # 1. Consultar disponibilidad
+        #1.Consultar disponibilidad
         self.sock_persistencia.send_string(json.dumps(
             {"operacion": "consultar_disponibilidad", "solicitud": asdict(solicitud)}))
         disponibilidad = Respuesta(**json.loads(self.sock_persistencia.recv_string()))
@@ -55,13 +51,13 @@ class ServicioRMC:
             return Respuesta(solicitud.id_solicitud, RECHAZADO,
                              {"motivo": "sin cupo", "libres": libres})
 
-        # 2. Hay cupo: pedir la confirmación condicional (Persistencia revisa otra vez)
+        #2.Hay cupo:pedir la confirmación condicional, la persitencia se revisa otra vezz.
         self.sock_persistencia.send_string(json.dumps(
             {"operacion": "confirmar_reserva", "solicitud": asdict(solicitud)}))
         return Respuesta(**json.loads(self.sock_persistencia.recv_string()))
 
     def procesar_modificacion(self, solicitud):
-        """Entrega 2."""
+        """para entrega 2."""
         pass
 
 

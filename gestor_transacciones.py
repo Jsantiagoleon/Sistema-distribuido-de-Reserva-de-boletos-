@@ -1,16 +1,9 @@
 """
 GestorTransacciones · VM2
-
-ROUTER bind :5557     <- ClienteCarga (REQ)      · canal síncrono
-DEALER connect :5556  -> ServicioRMC (REP)
-ROUTER bind :5558     <- ClienteCarga (DEALER)   · cancelaciones (Entrega 2)
-PUSH   bind :5559     -> ServicioCancelaciones   · (Entrega 2)
-
 Recibe a todos los clientes por el ROUTER y reenvía cada solicitud al RMC por
 el DEALER, sin bloquearse. Cuando vuelve la respuesta, la entrega al cliente
 correcto usando la identidad que puso el ROUTER.
 
-Uso: python3 gestor_transacciones.py
 """
 
 import json
@@ -29,10 +22,10 @@ class GestorTransacciones:
         contexto = zmq.Context()
         self.sock_clientes_sync = contexto.socket(zmq.ROUTER)   # ROUTER: recibe a los clientes
         self.sock_clientes_sync.bind(f"tcp://*:{config.PUERTO_GT}")
-        self.sock_clientes_async = None                          # ROUTER (Entrega 2)
-        self.sock_rmc = contexto.socket(zmq.DEALER)             # DEALER: reenvía al RMC
+        self.sock_clientes_async = None                      
+        self.sock_rmc = contexto.socket(zmq.DEALER)        # DEALER: reenvía al RMC
         self.sock_rmc.connect(config.DIR_RMC)
-        self.sock_cancelaciones = None                           # PUSH   (Entrega 2)
+        self.sock_cancelaciones = None                       
 
     def enrutar_sincrono(self, solicitud):
         """Reenvía al RMC una solicitud de consulta o reserva recibida de un cliente.

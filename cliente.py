@@ -1,14 +1,6 @@
 """
-ClienteCarga · VM1
+ClienteCarga en VM1
 
-REQ    connect VM2:5557 -> GestorTransacciones (ROUTER)   · consulta y reserva
-DEALER connect VM2:5558 -> GestorTransacciones (ROUTER)   · cancelación (Entrega 2)
-SUB    connect VM2:5560 <- ServicioCancelaciones (PUB)    · notificaciones (Entrega 2)
-
-Genera carga durante un tiempo dado: envía consultas y reservas al Gestor,
-mide el tiempo de respuesta de cada una y lo guarda en resultados_<id>.csv.
-
-Uso: python3 cliente.py --id C1 --rpm 20 --modo fija --pct-consulta 50 --pct-reserva 50 --duracion 3
 """
 
 import argparse
@@ -25,8 +17,7 @@ import zmq
 import config
 from modelos import Respuesta, Solicitud, CONSULTA, RESERVA
 
-# Id de cada solicitud: cliente, hora de inicio de la ejecución y consecutivo (C1-184906-0001).
-# La hora evita que dos ejecuciones distintas repitan el mismo id.
+
 ejecucion = datetime.now().strftime("%H%M%S")
 consecutivo = itertools.count(1)
 
@@ -40,13 +31,12 @@ class ClienteCarga:
         self.pct_consulta = pct_consulta
         self.pct_reserva = pct_reserva
         self.pct_modificacion = pct_modificacion
-        self.modo = modo                # fija | cerrado
-        self.sock_sync = zmq.Context.instance().socket(zmq.REQ)     # REQ hacia el GT
+        self.modo = modo    # fija  cerrado
+        self.sock_sync = zmq.Context.instance().socket(zmq.REQ)#REQ hacia el GT
         self.sock_sync.setsockopt(zmq.RCVTIMEO, config.TIMEOUT_CLIENTE_MS)
         self.sock_sync.setsockopt(zmq.LINGER, 0)
         self.sock_sync.connect(direccion_gt)
-        self.sock_cancel = None         # DEALER (Entrega 2)
-        self.sock_notif = None          # SUB    (Entrega 2)
+        self.sock_cancel = None        
 
     def enviar_consulta(self, mes):
         """Envía una consulta de los eventos del mes y devuelve la Respuesta
@@ -58,7 +48,7 @@ class ClienteCarga:
             self.sock_sync.send_string(json.dumps(asdict(solicitud)))
             respuesta = Respuesta(**json.loads(self.sock_sync.recv_string()))
         except zmq.Again:
-            # Timeout: se registra sin_respuesta y se reabre el socket REQ
+            #Timeout:se registra sin_respuesta y se reabre el socket REQ
             respuesta = None
             direccion = self.sock_sync.getsockopt_string(zmq.LAST_ENDPOINT)
             self.sock_sync.close()

@@ -1,13 +1,6 @@
 """
 ServicioPersistencia · VM3
 
-REP bind :5555 <- ServicioRMC y ServicioCancelaciones (REQ)
-
-Recibe mensajes JSON de la forma {"operacion": ..., "solicitud": {...}} con
-operacion = consultar_mes | consultar_disponibilidad | confirmar_reserva,
-y responde con una Respuesta en JSON.
-
-Uso: python3 servicio_persistencia.py
 """
 
 import json

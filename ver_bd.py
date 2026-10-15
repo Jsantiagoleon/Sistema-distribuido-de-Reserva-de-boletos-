@@ -1,7 +1,6 @@
 """
-Muestra los asientos libres y ocupados de cada ocurrencia · VM3
+Muestra los asientos libres y ocupados de cada ocurrencia en la VM3
 
-Uso: python3 ver_bd.py
 """
 
 import json

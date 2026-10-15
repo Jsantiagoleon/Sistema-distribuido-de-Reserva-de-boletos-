@@ -1,13 +1,10 @@
 """
 Calcula las métricas de un escenario a partir de los CSV de resultados.
 
-- Tiempo de respuesta (promedio y desviación estándar) por cliente y total,
+Tiempo de respuesta (promedio y desviación estándar) por cliente y total,
   con los archivos resultados_<id>.csv de los clientes (VM1).
-- TPM: solicitudes completadas por minuto en el Gestor, con gt_metricas.csv (VM2).
+TPM: solicitudes completadas por minuto en el Gestor, con gt_metricas.csv (VM2).
 
-Uso:
-  python3 metricas.py clientes resultados/esc3_20261013_120000   (en la VM1)
-  python3 metricas.py gestor resultados/gt_metricas.csv           (en la VM2)
 """
 
 import csv

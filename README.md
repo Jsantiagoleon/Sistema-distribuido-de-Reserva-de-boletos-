@@ -86,3 +86,8 @@ VM2:
 python3 metricas.py gestor resultados/gt_metricas.csv
 mv resultados/gt_metricas.csv resultados/gt_esc3.csv
 ```
+
+
+
+matar proceso: pkill -f cliente.py
+

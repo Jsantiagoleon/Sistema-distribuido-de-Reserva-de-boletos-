@@ -25,7 +25,9 @@ import zmq
 import config
 from modelos import Respuesta, Solicitud, CONSULTA, RESERVA
 
-# Consecutivo de las solicitudes de este cliente: C1-0001, C1-0002, ...
+# Id de cada solicitud: cliente, hora de inicio de la ejecución y consecutivo (C1-184906-0001).
+# La hora evita que dos ejecuciones distintas repitan el mismo id.
+ejecucion = datetime.now().strftime("%H%M%S")
 consecutivo = itertools.count(1)
 
 
@@ -49,7 +51,7 @@ class ClienteCarga:
     def enviar_consulta(self, mes):
         """Envía una consulta de los eventos del mes y devuelve la Respuesta
         (None si no hubo respuesta en 5 s)."""
-        solicitud = Solicitud(f"{self.id_cliente}-{next(consecutivo):04d}", self.id_cliente,
+        solicitud = Solicitud(f"{self.id_cliente}-{ejecucion}-{next(consecutivo):04d}", self.id_cliente,
                               CONSULTA, mes=mes)
         inicio = time.perf_counter()
         try:
@@ -70,7 +72,7 @@ class ClienteCarga:
 
     def enviar_reserva(self, id_evento, num_ocurrencia, asientos):
         """Envía una reserva y devuelve la Respuesta (None si no hubo respuesta en 5 s)."""
-        solicitud = Solicitud(f"{self.id_cliente}-{next(consecutivo):04d}", self.id_cliente,
+        solicitud = Solicitud(f"{self.id_cliente}-{ejecucion}-{next(consecutivo):04d}", self.id_cliente,
                               RESERVA, id_evento=id_evento, num_ocurrencia=num_ocurrencia,
                               asientos=asientos)
         inicio = time.perf_counter()
@@ -117,7 +119,7 @@ class ClienteCarga:
         detalle = (f"{solicitud.id_evento}/oc{solicitud.num_ocurrencia} {solicitud.asientos} asientos"
                    if solicitud.tipo == RESERVA else f"mes {solicitud.mes}")
         print(f"{datetime.now():%H:%M:%S.%f}"[:-3] +
-              f"  {self.id_cliente:<6} {solicitud.tipo:<25} {solicitud.id_solicitud:<10} "
+              f"  {self.id_cliente:<6} {solicitud.tipo:<25} {solicitud.id_solicitud:<17} "
               f"{estado:<13} {ms / 1000:.4f} s  {detalle}", flush=True)
 
 

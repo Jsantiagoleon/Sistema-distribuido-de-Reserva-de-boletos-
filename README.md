@@ -88,6 +88,21 @@ mv resultados/gt_metricas.csv resultados/gt_esc3.csv
 ```
 
 
+## Prueba con un solo cliente en VM1
+
+En la VM1, una consulta y una reserva:
+
+```bash
+python3 cliente.py --id C1 --pct-consulta 100 --pct-reserva 0 --duracion 0.01
+python3 cliente.py --id C1 --pct-consulta 0 --pct-reserva 100 --duracion 0.01
+```
+
+Un cliente con parámetros propios:
+
+```bash
+python3 cliente.py --id C1 --rpm 20 --pct-consulta 50 --pct-reserva 50 --duracion 1
+```
+
 
 matar proceso: pkill -f cliente.py
 

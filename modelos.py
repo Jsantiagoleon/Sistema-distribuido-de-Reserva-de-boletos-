@@ -2,7 +2,7 @@
 Clases de datos del diagrama de clases.
 
 Solicitud y Respuesta son los mensajes que viajan en JSON entre procesos.
-Evento, Ocurrencia y Reserva son las entidades que se guardan en events.json.
+Evento, Ocurrencia y Reserva son las entidades que se guardan en PostgreSQL (ver bd.py).
 """
 
 from dataclasses import dataclass, field
@@ -18,10 +18,22 @@ CANCELACION = "cancelacion"
 EXITO = "EXITO"
 RECHAZADO = "RECHAZADO"
 ERROR = "ERROR"
+ACEPTADA = "ACEPTADA"      # acuse inmediato del GT a una cancelación asíncrona
+
+# Valores de Reserva.estado
+ACTIVA = "activa"
+CANCELADA = "cancelada"
 
 
 @dataclass
 class Solicitud:
+    """Mensaje del cliente.
+    - consulta:      mes
+    - reserva:       id_evento, num_ocurrencia, asientos
+    - modificacion:  id_reserva y UNA de dos cosas: asientos (nuevo total en la misma
+                     ocurrencia) o num_ocurrencia (cambio de fecha conservando los asientos)
+    - cancelacion:   id_reserva
+    """
     id_solicitud: str
     id_cliente: str
     tipo: str
@@ -62,3 +74,4 @@ class Reserva:
     asientos: int
     id_evento: str = None        # asociación "sobre" con la Ocurrencia
     num_ocurrencia: int = None
+    estado: str = ACTIVA         # una reserva cancelada se conserva, pero ya no ocupa asientos

@@ -1,22 +1,3 @@
-"""
-Gráficas del informe de rendimiento (PNG) a partir de los resúmenes de metricas.py y de vmstat.
-
-    python3 graficas.py g1 resumen.csv        G1 · tiempo de respuesta por tipo vs clientes (P1)
-    python3 graficas.py g2 resumen.csv        G2 · TPM total y por tipo vs clientes (P1)
-    python3 graficas.py g3 vm1.txt vm2.txt vm3.txt
-                                              G3 · CPU y memoria libre de cada VM en el tiempo (vmstat -t)
-    python3 graficas.py g4 resumen_cap.csv [--umbral 5]
-                                              G4 · capacidad: TPM vs clientes en modo cerrado (P2),
-                                                   con el punto de saturación marcado
-    python3 graficas.py g5 <carpeta_corrida> [--marca SEG]
-                                              G5 · línea de tiempo de una prueba de falla (T1/T2)
-    python3 graficas.py g6 resumen.csv        G6 · base vs escalable: latencia y TPM
-Opciones: --salida carpeta (por defecto graficas/), --descartar segundos (solo g5, por defecto 0).
-
-Colores: azul = arquitectura base, naranja = arquitectura escalable (par de la paleta categórica
-validada). Barras de error = desviación estándar ENTRE repeticiones (ver metricas.py).
-"""
-
 import argparse
 import csv
 from datetime import datetime
@@ -27,7 +8,7 @@ import sys
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
 COLOR = {"base": "#2a78d6", "escalable": "#eb6834"}
 MARCA = {"base": "o", "escalable": "s"}
@@ -51,7 +32,7 @@ def leer_resumen(ruta):
             f[k] = int(f[k])
         for k in ("media_ms", "desv_ms", "p95_ms", "gt_media_ms", "red_colas_ms", "tpm_gt", "tpm_gt_desv",
                   "tpm_clientes", "tpm_clientes_desv"):
-            f[k] = float(f.get(k) or "nan")      # los resúmenes viejos no traen gt_media_ms / red_colas_ms
+            f[k] = float(f.get(k) or "nan")
     return filas
 
 
@@ -102,7 +83,6 @@ def tpm_de(f):
 
 
 def barras_por_arquitectura(filas, salida, nombre, titulo, ylabel, valor, error=None, apilado=False):
-    """Un panel por arquitectura; eje X = clientes; una barra por tipo de operación (o apiladas)."""
     arqs = [a for a in ("base", "escalable") if any(f["arquitectura"] == a for f in filas)]
     tipos = tipos_presentes(filas, TIPOS)
     xs = sorted({f["clientes"] for f in filas})
@@ -151,8 +131,6 @@ def g2(filas, salida):
 
 
 def leer_vmstat(ruta):
-    """Lee la salida de `vmstat -t`: devuelve lista de (segundos desde la 1.ª muestra, %CPU usada, MiB libres).
-    La primera fila de vmstat es el promedio desde el arranque de la máquina y se descarta."""
     columnas, filas = None, []
     with open(ruta, encoding="utf-8", errors="replace") as f:
         for linea in f:
@@ -196,7 +174,6 @@ def g3(archivos, salida):
 
 
 def g4(filas, salida, umbral=5.0):
-    """Capacidad (modo cerrado): TPM total y tiempo de respuesta medio vs clientes, con la saturación marcada."""
     from metricas import saturacion
     tot = {}
     for f in filas:
@@ -227,7 +204,6 @@ def g4(filas, salida, umbral=5.0):
 
 
 def g6(filas, salida):
-    """Base vs escalable: latencia media (ponderada por muestras) y TPM total contra clientes."""
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(8.6, 3.6))
     for arq in ("base", "escalable"):
         lat, tpm = {}, {}

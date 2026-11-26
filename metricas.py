@@ -1,34 +1,3 @@
-"""
-Métricas de rendimiento (Tabla 1 del enunciado) a partir de los CSV de una corrida.
-
-Una corrida es una carpeta con:
-  resultados_C1.csv ... resultados_Cn.csv   los escribe cada cliente (VM1)
-  gt_metricas.csv                           lo escribe el GT (VM2); se copia a la carpeta (opcional)
-  meta.json                                 lo escribe vm1_escenario.sh (arquitectura, clientes, ...)
-
-Qué se calcula, por tipo de operación (consulta, reserva, modificacion):
-  * Tiempo de respuesta medio y desviación estándar (ms), medido en el cliente con time.perf_counter()
-    desde que envía hasta que recibe la respuesta (incluye reintentos). Solo cuentan las solicitudes
-    procesadas (EXITO o RECHAZADO).
-  * Tiempo de servicio en el GT (media de gt_metricas.csv) y aporte de la red y las colas = media del
-    cliente - media del GT (resta de promedios; nunca se restan marcas de hora de máquinas distintas).
-  * TPM = solicitudes procesadas por minuto, medido en el GT (gt_metricas.csv) y, como
-    comprobación cruzada, contado en los clientes.
-  * Errores, solicitudes sin respuesta y reintentos.
-Se descartan los primeros --descartar segundos de cada corrida (arranque). La ventana de los clientes
-se calcula con los relojes de la VM1 y la del GT con el reloj de la VM2, así que no hace falta que
-las máquinas estén sincronizadas.
-
-Al combinar repeticiones (resumen) la media es la media de las medias de cada repetición y la
-desviación estándar es la que hay ENTRE repeticiones (son las barras de error de las gráficas); con una
-sola repetición se usa la desviación de las muestras. En las pruebas de capacidad (P2) se indica el
-punto de saturación: el primer número de clientes cuyo siguiente aumento sube el TPM menos de --umbral %.
-
-Uso:
-    python3 metricas.py corrida resultados/base_esc3_r1_20261120_101500
-    python3 metricas.py resumen resultados/base_esc* resultados/escalable_esc* --csv resumen.csv
-"""
-
 import argparse
 import csv
 import glob
@@ -43,8 +12,6 @@ PROCESADAS = ("EXITO", "RECHAZADO")
 
 
 def leer_corrida(carpeta, descartar=15.0):
-    """Lee los CSV de la carpeta y devuelve un dict con las filas de clientes dentro de la
-    ventana de medición, las del GT y la ventana (inicio, fin) en segundos epoch."""
     filas = []
     for ruta in sorted(glob.glob(os.path.join(carpeta, "resultados_*.csv"))):
         with open(ruta, encoding="utf-8") as f:
@@ -71,7 +38,6 @@ def leer_corrida(carpeta, descartar=15.0):
         with open(ruta_gt, encoding="utf-8") as f:
             todas = list(csv.DictReader(f))
         if todas:
-            # ventana del GT con SU reloj (VM2): primera fila + descarte hasta la última fila
             horas = [float(r["hora"]) for r in todas]
             ventana_gt = (min(horas) + descartar, max(horas))
             gt = [r for r in todas if ventana_gt[0] <= float(r["hora"]) <= ventana_gt[1]]
@@ -96,7 +62,6 @@ def desviacion(valores):
 
 
 def analizar(corrida):
-    """Estadísticas por tipo de una corrida: dict tipo -> dict de métricas."""
     minutos = (corrida["fin"] - corrida["inicio"]) / 60
     g0, g1 = corrida["ventana_gt"]
     minutos_gt = (g1 - g0) / 60 if g0 is not None and g1 > g0 else float("nan")
@@ -125,8 +90,8 @@ def analizar(corrida):
             "media_ms": media,
             "desv_ms": desviacion(tiempos),
             "p95_ms": percentil(tiempos, 95),
-            "gt_media_ms": media_gt,                        # tiempo de servicio dentro del GT
-            "red_colas_ms": media - media_gt,               # aporte de la red y las colas
+            "gt_media_ms": media_gt,
+            "red_colas_ms": media - media_gt,
             "tpm_clientes": len(buenas) / minutos,
             "tpm_gt": (len(t_gt) / minutos_gt if corrida["tiene_gt"] else float("nan")),
         }
@@ -160,7 +125,6 @@ def imprimir_corrida(carpeta, corrida, stats):
 
 
 def agregar(carpetas, descartar):
-    """Agrupa las corridas por (arquitectura, clientes) y combina las repeticiones."""
     grupos = {}
     for carpeta in carpetas:
         corrida = leer_corrida(carpeta, descartar)
@@ -183,8 +147,6 @@ def agregar(carpetas, descartar):
             filas.append({
                 "arquitectura": arq, "clientes": n, "prueba": kind, "tipo": tipo,
                 "corridas": len(con_tipo), "muestras": len(tiempos),
-                # media de las medias de cada repetición; desviación ENTRE repeticiones
-                # (con una sola repetición, la de sus muestras)
                 "media_ms": statistics.fmean(medias) if medias else float("nan"),
                 "desv_ms": desviacion(medias) if len(medias) > 1 else desviacion(tiempos),
                 "p95_ms": percentil(tiempos, 95),
@@ -212,7 +174,6 @@ def imprimir_resumen(filas):
 
 
 def tpm_total(filas):
-    """TPM de todas las operaciones por (arquitectura, clientes), medido en el GT si hay datos."""
     tot = {}
     for f in filas:
         if f["tipo"] in TIPOS:
@@ -222,9 +183,6 @@ def tpm_total(filas):
 
 
 def saturacion(filas, umbral=5.0):
-    """Punto de saturación de la prueba de capacidad (P2, modo cerrado) por arquitectura.
-    Devuelve {arquitectura: (clientes, tpm, aumento_siguiente_%)} o None si el TPM siguió creciendo:
-    es el primer número de clientes cuyo siguiente escalón sube el TPM menos de `umbral` %."""
     tot = tpm_total([f for f in filas if f["prueba"] == "capacidad"])
     resultado = {}
     for arq in sorted({a for a, _ in tot}):

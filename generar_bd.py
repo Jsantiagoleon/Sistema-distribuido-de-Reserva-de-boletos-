@@ -1,17 +1,3 @@
-"""
-Crea (o reinicia) las tablas del SRB en PostgreSQL con los datos iniciales · VM3
-
-50 eventos en noviembre de 2026: E1 a E20 con dos ocurrencias y E21 a E50
-con una, todas con 100 asientos libres (70 ocurrencias, 7.000 asientos).
-Si las tablas ya existen se borran y se vuelven a crear (sirve para reiniciar la BD);
-detenga Persistencia antes de reiniciar.
-
-Requiere que PostgreSQL esté instalado y que existan el usuario y la base de datos
-(ver README, sección "PostgreSQL en la VM3", o ejecute ./preparar_postgres.sh).
-
-Uso: python3 generar_bd.py
-"""
-
 import psycopg2
 
 import bd

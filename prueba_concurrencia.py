@@ -1,17 +1,3 @@
-"""
-Prueba C1 (concurrencia) · VM1
-
-Deja 8 asientos libres en E49/oc1 y lanza 8 clientes (8 procesos) que, todos a la vez, piden 2
-asientos cada uno. Solo caben 4 reservas: se espera exactamente 4 EXITO y 4 RECHAZADO, y que la
-ocurrencia termine con 0 libres y 100 ocupados (nada vendido de más ni asientos perdidos).
-Con --bd (solo si se corre donde está PostgreSQL, la VM3) también consulta la base de datos y revisa
-que libres + ocupados = 100.
-
-Usa E49/oc1; después hay que reiniciar la BD (python3 generar_bd.py).
-
-Uso: python3 prueba_concurrencia.py [--gt tcp://10.43.100.247:5557] [--bd [NOMBRE_BD]]
-"""
-
 import argparse
 import json
 import multiprocessing as mp
@@ -32,7 +18,6 @@ def reservar(gt, id_cliente, asientos, arranque, salida):
 
 
 def ejecutar(gt, base=None):
-    """base: None = no consultar la BD; True = la base configurada; texto = esa base."""
     ok, detalle = True, []
     preparacion = json.loads(enviar_crudo(gt, json.dumps({
         "id_solicitud": f"C0-conc-{int(time.time())}", "id_cliente": "C0", "tipo": "reserva",
@@ -45,7 +30,7 @@ def ejecutar(gt, base=None):
     for p in procesos:
         p.start()
     time.sleep(0.5)
-    arranque.set()                      # los 8 envían en el mismo instante
+    arranque.set()
     resultados = [salida.get(timeout=15) for _ in procesos]
     for p in procesos:
         p.join()

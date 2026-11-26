@@ -1,10 +1,3 @@
-"""
-Muestra los asientos libres y ocupados de cada ocurrencia y el número de reservas · VM3
-
-Lee directamente de PostgreSQL (la misma información sale con psql, ver README).
-Uso: python3 ver_bd.py
-"""
-
 import psycopg2
 
 import bd

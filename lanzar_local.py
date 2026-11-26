@@ -1,20 +1,3 @@
-"""
-Levanta TODO el SRB en una sola máquina (localhost) para probar sin las 3 VM.
-
-Cada componente es un proceso aparte, igual que en el despliegue real; el GT de respaldo usa el
-puerto 6557 (el principal el 5557) para que los dos convivan en la misma máquina. Crea una base de
-datos PostgreSQL temporal (srb_local_xxxx, en el servidor que indiquen las variables SRB_PG_*) y una
-carpeta de resultados temporal; al terminar borra la base temporal, así que no toca la base "srb".
-
-Uso en una terminal:
-    python3 lanzar_local.py [--replicas 2] [--sin-respaldo] [--replica-lectura]
-Luego, en otra:
-    python3 cliente.py --id C1 --gt tcp://127.0.0.1:5557,tcp://127.0.0.1:6557 --duracion 1
-Ctrl+C detiene todo. Los logs de cada proceso quedan en la carpeta que se imprime al arrancar.
-
-También lo usan las pruebas automáticas (pruebas/) mediante la clase Sistema.
-"""
-
 import argparse
 import os
 import signal
@@ -37,9 +20,6 @@ class Sistema:
         self.replicas = replicas
         self.respaldo = respaldo
         self.replica_lectura = replica_lectura
-        # doble_activo=True: los dos GT se creen "principal" y no se oyen entre sí, así que quedan
-        # ACTIVOS a la vez (prueba T4: dos GT atendiendo la misma solicitud). El "par" apunta a un
-        # puerto donde nadie publica latidos.
         self.doble_activo = doble_activo
         self.carpeta = carpeta or tempfile.mkdtemp(prefix="srb_local_")
         self.nombre_bd = "srb_local_" + uuid.uuid4().hex[:10]
@@ -50,7 +30,6 @@ class Sistema:
         self.procesos = {}
         self.dirs_gt = [GT_PRINCIPAL, GT_RESPALDO] if respaldo else [GT_PRINCIPAL]
 
-    # ------------------------------------------------------------ procesos
     def _comando(self, nombre):
         py = sys.executable
         if nombre == "persistencia":
@@ -78,15 +57,13 @@ class Sistema:
         log = open(os.path.join(self.carpeta, f"{nombre}.log"), "a")
         self.procesos[nombre] = subprocess.Popen(self._comando(nombre), cwd=AQUI, env=self.env,
                                                  stdout=log, stderr=subprocess.STDOUT)
-        log.close()                      # el proceso hijo conserva su propia copia del descriptor
+        log.close()
 
     def matar(self, nombre):
-        """kill -9: simula la caída abrupta del proceso."""
         p = self.procesos.pop(nombre)
         p.kill()
         p.wait()
 
-    # ------------------------------------------------------------ base de datos temporal
     def _crear_bd(self):
         admin = bd.conectar("postgres")
         admin.autocommit = True
@@ -104,7 +81,6 @@ class Sistema:
         admin.close()
 
     def conectar_bd(self):
-        """Conexión a la base temporal (para que las pruebas revisen lo que quedó guardado)."""
         return bd.conectar(self.nombre_bd)
 
     def arrancar(self, generar_bd=True):
@@ -120,7 +96,6 @@ class Sistema:
         self.iniciar("gt_principal")
         if self.respaldo:
             self.iniciar("gt_respaldo")
-        # el GT principal se activa tras 1,5 s de escucha; el respaldo queda pasivo
         time.sleep(2.5)
 
     def parar(self):

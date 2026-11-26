@@ -1,31 +1,16 @@
 #!/usr/bin/env bash
-# Lanza en paralelo los clientes de un escenario de la Tabla 1 · VM1
-#
-# Uso:
-#   ./vm1_escenario.sh <3|5|8> <base|escalable> [repeticion=1] [duracion_min=3]
-#   ./vm1_escenario.sh capacidad <N> <base|escalable> [duracion_min=1]     (prueba P2, modo cerrado)
-#
-# Escenarios (Tabla 1 del enunciado), cada cliente a 20 solicitudes/min:
-#   3 clientes: C1 y C2 solo consultan; C3 consulta y reserva (50/50)
-#   5 clientes: C1-C3 solo consultan; C4 y C5 reservan y modifican (50/50)
-#   8 clientes: C1-C4 solo consultan; C5-C8 reservan y modifican (50/50)
-#   capacidad N: N clientes en modo cerrado (cada uno envía la siguiente solicitud apenas recibe
-#                la respuesta), 50% consultas y 50% reservas; sirve para ver dónde se satura el sistema.
-#
-# "base" usa un solo GT (el principal). "escalable" usa los dos GT (principal y respaldo). Qué
-# componentes están levantados en VM2/VM3 (réplicas del RMC, réplica de lectura) se decide al
-# arrancarlos; ver el README.
-#
-# Cada corrida queda en resultados/<arquitectura>_esc<N>_r<rep>_<fecha>/ con meta.json y un
-# resultados_Cn.csv por cliente. Después, copie ahí el gt_metricas.csv de la VM2 (scp) y use metricas.py.
-
 cd "$(dirname "$0")" || exit 1
 IP_VM2="${SRB_IP_VM2:-10.43.100.247}"
 IP_VM3="${SRB_IP_VM3:-10.43.99.241}"
 PUERTO_GT=5557
 FECHA="$(date +%Y%m%d_%H%M%S)"
 
-uso() { sed -n '2,15p' "$0"; exit 1; }
+uso() {
+  echo "Uso:"
+  echo "  ./vm1_escenario.sh <3|5|8> <base|escalable> [repeticion=1] [duracion_min=3]"
+  echo "  ./vm1_escenario.sh capacidad <N> <base|escalable> [duracion_min=1]"
+  exit 1
+}
 
 if [[ "$1" == "capacidad" ]]; then
   N="$2"; ARQ="$3"; DURACION="${4:-1}"; REP=1; TIPO="capacidad"; MODO="cerrado"

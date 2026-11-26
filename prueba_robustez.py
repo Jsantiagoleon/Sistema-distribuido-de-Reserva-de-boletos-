@@ -1,13 +1,3 @@
-"""
-Prueba R1 (robustez) · VM1
-
-Envía al GT mensajes mal formados o con datos fuera de rango y comprueba que cada uno recibe una
-respuesta ERROR (o RECHAZADO) y que los servicios siguen funcionando: al final una consulta válida
-debe responder EXITO.
-
-Uso: python3 prueba_robustez.py [--gt tcp://10.43.100.247:5557]
-"""
-
 import argparse
 import json
 import sys
@@ -44,7 +34,6 @@ CASOS = [
 
 
 def enviar_crudo(gt, texto, timeout_ms=6000):
-    """Envía el texto tal cual por un REQ nuevo; devuelve la respuesta (texto) o None."""
     sock = zmq.Context.instance().socket(zmq.REQ)
     sock.setsockopt(zmq.RCVTIMEO, timeout_ms)
     sock.setsockopt(zmq.LINGER, 0)
@@ -59,7 +48,6 @@ def enviar_crudo(gt, texto, timeout_ms=6000):
 
 
 def ejecutar(gt):
-    """Devuelve (ok, lista de líneas con el detalle)."""
     ok, detalle = True, []
     for nombre, mensaje in CASOS:
         crudo = enviar_crudo(gt, mensaje)

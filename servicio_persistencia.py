@@ -1,30 +1,3 @@
-"""
-ServicioPersistencia · VM3
-
-Guarda los datos en una base de datos PostgreSQL (ver bd.py) y es el único proceso del SRB que
-se conecta a ella. Atiende un mensaje a la vez (un solo bucle REP) y cada operación que escribe es
-UNA transacción de PostgreSQL: o se guarda todo (asientos, reserva y respuesta) o no se guarda nada.
-Si Persistencia se cae a mitad de una operación, PostgreSQL deshace la transacción incompleta.
-
-Dos roles:
-  python3 servicio_persistencia.py                 Persistencia principal (lecturas y escrituras)
-  python3 servicio_persistencia.py --rol replica   Réplica de solo lectura: responde las consultas
-                                                   del mes con una copia en memoria que se mantiene
-                                                   al día con los cambios que publica la principal.
-                                                   No usa PostgreSQL.
-
-Operaciones de la principal (mensaje JSON {"operacion": ..., "solicitud": {...}}):
-  consultar_mes, consultar_disponibilidad, confirmar_reserva, modificar_reserva,
-  cancelar_reserva, snapshot (la usa la réplica al arrancar).
-
-Idempotencia: cada operación que escribe guarda su respuesta en la tabla "solicitudes_procesadas"
-dentro de la MISMA transacción que el cambio. Si llega otra vez el mismo id_solicitud (reintento
-del cliente tras una falla), se devuelve la respuesta guardada y no se vuelve a descontar nada.
-Los descuentos de asientos son UPDATE condicionales ("... WHERE asientos_libres >= n") y la tabla
-tiene restricciones CHECK, así que nunca se pueden vender asientos de más aunque haya dos
-Persistencias o dos transacciones a la vez.
-"""
-
 import argparse
 import json
 import time
@@ -40,7 +13,7 @@ import config
 from modelos import (Evento, Ocurrencia, Respuesta, Solicitud,
                      ACTIVA, CANCELADA, EXITO, RECHAZADO, ERROR)
 
-TRANSACCIONES_ENTRE_LIMPIEZAS = 200      # cada cuántas escrituras se recorta solicitudes_procesadas
+TRANSACCIONES_ENTRE_LIMPIEZAS = 200
 
 
 def log(componente, texto):
@@ -48,7 +21,6 @@ def log(componente, texto):
 
 
 def cargar_eventos(datos_eventos):
-    """Convierte el diccionario del snapshot en objetos Evento/Ocurrencia (lo usa la réplica)."""
     eventos = {}
     for id_evento, e in datos_eventos.items():
         ocurrencias = [Ocurrencia(o["numero"], date.fromisoformat(o["fecha"]),
@@ -60,13 +32,11 @@ def cargar_eventos(datos_eventos):
 
 
 class VistaEventos:
-    """Consultas de solo lectura sobre los eventos en memoria (las usa la réplica de lectura)."""
 
     def __init__(self):
         self.eventos = {}
 
     def consultar_mes(self, mes):
-        """Devuelve los eventos que tienen al menos una ocurrencia en el mes."""
         return [e for e in self.eventos.values()
                 if any(oc.fecha.month == mes for oc in e.ocurrencias)]
 
@@ -80,7 +50,6 @@ class VistaEventos:
         return None
 
 
-# ======================================================================= principal
 def _entero(valor):
     return isinstance(valor, int) and not isinstance(valor, bool)
 
@@ -89,12 +58,12 @@ class ServicioPersistencia:
 
     def __init__(self):
         self.conn = None
-        self.respuestas = {}            # id_solicitud -> respuesta (caché de las más recientes)
+        self.respuestas = {}
         self.escrituras = 0
-        self.seq = 0                    # versión de los deltas
-        self.epoca = time.time_ns()     # cambia en cada arranque: la réplica sabe que debe resincronizarse
+        self.seq = 0
+        self.epoca = time.time_ns()
 
-        with self._transaccion() as cur:        # falla aquí si PostgreSQL no responde
+        with self._transaccion() as cur:
             if not bd.existe_esquema(self.conn):
                 raise SystemExit("La base de datos no tiene las tablas del SRB. "
                                  "Ejecute primero: python3 generar_bd.py")
@@ -104,14 +73,11 @@ class ServicioPersistencia:
         contexto = zmq.Context()
         self.sock_rep = contexto.socket(zmq.REP)
         self.sock_rep.bind(f"tcp://*:{config.PUERTO_PERSISTENCIA}")
-        self.sock_deltas = contexto.socket(zmq.PUB)                  # hacia la réplica de lectura
+        self.sock_deltas = contexto.socket(zmq.PUB)
         self.sock_deltas.bind(f"tcp://*:{config.PUERTO_REPLICA_PUB}")
 
-    # ------------------------------------------------------------ base de datos
     @contextmanager
     def _transaccion(self):
-        """Una transacción de PostgreSQL: COMMIT si todo sale bien, ROLLBACK si algo falla.
-        Si la conexión se perdió, abre una nueva."""
         if self.conn is None or self.conn.closed:
             self.conn = bd.conectar()
         cur = self.conn.cursor()
@@ -127,7 +93,6 @@ class ServicioPersistencia:
         finally:
             cur.close()
 
-    # ------------------------------------------------------------ utilidades
     def _valida_asientos(self, asientos):
         return _entero(asientos) and 1 <= asientos <= config.ASIENTOS_POR_OCURRENCIA
 
@@ -137,7 +102,6 @@ class ServicioPersistencia:
             self.respuestas.pop(next(iter(self.respuestas)))
 
     def _repetida(self, cur, solicitud):
-        """Respuesta guardada si el id_solicitud ya fue procesado, o None."""
         clave = str(solicitud.id_solicitud)
         guardada = self.respuestas.get(clave)
         if guardada is None:
@@ -147,9 +111,6 @@ class ServicioPersistencia:
         return None if guardada is None else Respuesta(**guardada)
 
     def _ajustar(self, cur, id_evento, numero, delta_libres):
-        """Suma 'delta_libres' a los asientos libres de una ocurrencia (y lo resta de los ocupados).
-        La condición del WHERE impide dejar libres negativos o por encima de lo disponible.
-        Devuelve (id_evento, numero, libres, ocupados) o None si no se pudo."""
         cur.execute("""UPDATE ocurrencias
                           SET asientos_libres = asientos_libres + %s,
                               asientos_ocupados = asientos_ocupados - %s
@@ -161,9 +122,6 @@ class ServicioPersistencia:
         return None if fila is None else (id_evento, numero, fila[0], fila[1])
 
     def _escribir(self, solicitud, logica):
-        """Ejecuta una operación que escribe como UNA transacción: 'logica(cur)' devuelve
-        (respuesta, ocurrencias_cambiadas). Si fue EXITO, la respuesta se guarda en la misma
-        transacción. Los deltas para la réplica se publican solo después del COMMIT."""
         with self._transaccion() as cur:
             guardada = self._repetida(cur, solicitud)
             if guardada is not None:
@@ -177,7 +135,6 @@ class ServicioPersistencia:
                     cur.execute("DELETE FROM solicitudes_procesadas WHERE orden <= "
                                 "(SELECT max(orden) FROM solicitudes_procesadas) - %s",
                                 (config.MAX_SOLICITUDES_GUARDADAS,))
-        # COMMIT hecho
         self._recordar(str(solicitud.id_solicitud), respuesta)
         if respuesta.estado == EXITO:
             self.seq += 1
@@ -188,7 +145,6 @@ class ServicioPersistencia:
                                 for ide, num, libres, ocupados in cambiadas]}))
         return respuesta
 
-    # ------------------------------------------------------------ operaciones
     def consultar_mes(self, mes):
         with self._transaccion() as cur:
             if not _entero(mes):
@@ -196,9 +152,6 @@ class ServicioPersistencia:
             return list(bd.leer_eventos(cur, mes).values())
 
     def consultar_disponibilidad_solicitud(self, solicitud):
-        """Paso 1 de una reserva. Si la solicitud ya se había procesado (reintento), devuelve
-        la respuesta guardada marcada como 'repetida' para que el RMC no vuelva a evaluar el cupo
-        (después de una reserva exitosa el cupo ya cambió y la repetición saldría RECHAZADA)."""
         with self._transaccion() as cur:
             guardada = self._repetida(cur, solicitud)
             if guardada is not None:
@@ -216,8 +169,6 @@ class ServicioPersistencia:
         return Respuesta(solicitud.id_solicitud, EXITO, {"libres": libres})
 
     def confirmar_reserva(self, solicitud):
-        """Paso 2 de una reserva: descuenta los asientos solo si alcanzan (UPDATE condicional) y
-        crea la reserva, todo en una transacción."""
         def logica(cur, s):
             if (not isinstance(s.id_evento, str) or not _entero(s.num_ocurrencia)
                     or not self._valida_asientos(s.asientos)):
@@ -230,7 +181,7 @@ class ServicioPersistencia:
                         RETURNING asientos_libres, asientos_ocupados""",
                         (s.asientos, s.asientos, s.id_evento, s.num_ocurrencia, s.asientos))
             fila = cur.fetchone()
-            if fila is None:       # o no existe la ocurrencia o no alcanza el cupo
+            if fila is None:
                 cur.execute("SELECT asientos_libres FROM ocurrencias WHERE id_evento = %s AND numero = %s",
                             (s.id_evento, s.num_ocurrencia))
                 existente = cur.fetchone()
@@ -252,7 +203,6 @@ class ServicioPersistencia:
         return self._escribir(solicitud, logica)
 
     def _leer_reserva(self, cur, id_reserva):
-        """Bloquea la reserva (FOR UPDATE) y la devuelve como diccionario, o None."""
         if not isinstance(id_reserva, str):
             return None
         cur.execute("""SELECT id_reserva, id_cliente, asientos, id_evento, num_ocurrencia, estado
@@ -263,10 +213,6 @@ class ServicioPersistencia:
         return dict(zip(("id_reserva", "id_cliente", "asientos", "id_evento", "num_ocurrencia", "estado"), fila))
 
     def modificar_reserva(self, solicitud):
-        """Cambia el número de asientos de una reserva (misma ocurrencia) o la pasa a la otra
-        ocurrencia del mismo evento conservando los asientos. La reserva y las ocurrencias del
-        evento quedan bloqueadas (FOR UPDATE) hasta el COMMIT, así que la revisión del cupo y el
-        cambio son atómicos."""
         def logica(cur, s):
             def resp(estado, datos):
                 return Respuesta(s.id_solicitud, estado, datos)
@@ -286,7 +232,7 @@ class ServicioPersistencia:
             libres_de = dict(cur.fetchall())
             actual = reserva["num_ocurrencia"]
 
-            if s.asientos is not None:                               # cambio de número de asientos
+            if s.asientos is not None:
                 if not self._valida_asientos(s.asientos):
                     return resp(ERROR, {"motivo": "asientos inválidos"}), []
                 diferencia = s.asientos - reserva["asientos"]
@@ -300,7 +246,6 @@ class ServicioPersistencia:
                 return (resp(EXITO, {"id_reserva": reserva["id_reserva"], "asientos": s.asientos,
                                      "num_ocurrencia": actual, "libres": cambio[2]}), [cambio])
 
-            # cambio de fecha: otra ocurrencia del mismo evento, mismos asientos
             if len(libres_de) < 2:
                 return resp(RECHAZADO, {"motivo": "el evento tiene una sola ocurrencia"}), []
             if not _entero(s.num_ocurrencia) or s.num_ocurrencia not in libres_de:
@@ -319,7 +264,6 @@ class ServicioPersistencia:
         return self._escribir(solicitud, logica)
 
     def cancelar_reserva(self, solicitud):
-        """Orden de liberación de asientos (la envía el Servicio de Cancelaciones)."""
         def logica(cur, s):
             reserva = self._leer_reserva(cur, s.id_reserva)
             if reserva is None:
@@ -342,9 +286,7 @@ class ServicioPersistencia:
             eventos = bd.leer_eventos(cur)
         return Respuesta("snapshot", EXITO, {"epoca": self.epoca, "seq": self.seq, "eventos": eventos})
 
-    # ------------------------------------------------------------ bucle principal
     def atender(self, mensaje):
-        """Procesa un mensaje JSON y devuelve (operacion, id_solicitud, Respuesta)."""
         operacion, id_solicitud = "?", "?"
         try:
             datos = json.loads(mensaje)
@@ -368,17 +310,12 @@ class ServicioPersistencia:
             else:
                 respuesta = Respuesta(id_solicitud, ERROR, {"motivo": "operación desconocida"})
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-            # PostgreSQL no responde o se cortó la conexión: el cliente debe reintentar. Si la
-            # operación pudo quedar guardada sin que lo supiéramos, el reintento recibirá la
-            # respuesta guardada (idempotencia). Se avanza seq para que la réplica de lectura,
-            # que pudo perder ese cambio, pida un snapshot con el siguiente delta.
             self.conn = None
             self.seq += 1
             log("PER", f"base de datos no disponible: {str(e).strip().splitlines()[0] if str(e).strip() else e}")
             respuesta = Respuesta(id_solicitud, ERROR,
                                   {"motivo": "base de datos no disponible", "reintentar": True})
         except Exception as e:
-            # Mensaje malformado: se responde ERROR y el servicio sigue funcionando
             respuesta = Respuesta(id_solicitud, ERROR, {"motivo": f"mensaje inválido: {e}"})
         return operacion, id_solicitud, respuesta
 
@@ -402,11 +339,7 @@ def main_principal():
         log("PER", f"{operacion:<25} {id_solicitud:<17} {respuesta.estado:<10} {tiempo:.4f} s")
 
 
-# ======================================================================= réplica
 class ReplicaLectura(VistaEventos):
-    """Copia de solo lectura. Se inicia con un snapshot de la principal y después aplica
-    los deltas que ésta publica (asientos libres/ocupados de las ocurrencias que cambiaron).
-    Si detecta que se perdió un delta (salto en 'seq') pide otro snapshot."""
 
     def __init__(self):
         super().__init__()
@@ -415,13 +348,12 @@ class ReplicaLectura(VistaEventos):
         self.epoca = None
         self.sock_sub = self.ctx.socket(zmq.SUB)
         self.sock_sub.setsockopt_string(zmq.SUBSCRIBE, "")
-        self.sock_sub.connect(config.DIR_REPLICA_PUB)     # primero se suscribe, luego pide el snapshot
+        self.sock_sub.connect(config.DIR_REPLICA_PUB)
         self.sock_rep = self.ctx.socket(zmq.REP)
         self.sock_rep.bind(f"tcp://*:{config.PUERTO_REPLICA_LECTURA}")
         self.sincronizar()
 
     def sincronizar(self):
-        """Pide a la principal una copia completa; reintenta hasta que responda."""
         while True:
             sock = self.ctx.socket(zmq.REQ)
             sock.setsockopt(zmq.RCVTIMEO, config.TIMEOUT_PERSISTENCIA_MS)
@@ -446,7 +378,7 @@ class ReplicaLectura(VistaEventos):
             self.sincronizar()
             return
         if delta["seq"] <= self.seq:
-            return                                  # ya incluido en el snapshot
+            return
         if delta["seq"] != self.seq + 1:
             log("REP", f"salto de seq ({self.seq} -> {delta['seq']}): se pide un snapshot nuevo")
             self.sincronizar()
@@ -485,7 +417,6 @@ def main_replica():
     while True:
         eventos = dict(poller.poll())
         if replica.sock_sub in eventos:
-            # se vacía la cola de deltas antes de atender consultas
             while True:
                 try:
                     replica.aplicar_delta(json.loads(replica.sock_sub.recv_string(zmq.NOBLOCK)))

@@ -1,18 +1,3 @@
-"""
-Acceso a la base de datos PostgreSQL del SRB (la usa Persistencia, generar_bd.py y ver_bd.py).
-
-Tablas:
-  eventos                 (id_evento, num_ocurrencias)
-  ocurrencias             (id_evento, numero, fecha, asientos_disponibles, asientos_libres, asientos_ocupados)
-  reservas                (id_reserva, id_cliente, asientos, id_evento, num_ocurrencia, estado)
-  solicitudes_procesadas  (id_solicitud, respuesta JSONB, orden): una fila por cada operación que
-                          escribió, guardada en la MISMA transacción que el cambio (idempotencia)
-
-Reglas que protege la propia base de datos, aunque el código falle:
-  - libres >= 0, ocupados >= 0 y libres + ocupados = disponibles (restricciones CHECK)
-  - un id_reserva o un id_solicitud no se puede repetir (llave primaria)
-"""
-
 import psycopg2
 import psycopg2.extras
 
@@ -62,7 +47,6 @@ CREATE INDEX solicitudes_orden ON solicitudes_procesadas (orden);
 
 
 def conectar(base=None):
-    """Conexión nueva (sin autocommit: cada operación es una transacción explícita)."""
     return psycopg2.connect(host=config.PG_HOST, port=config.PG_PUERTO,
                             dbname=base or config.PG_BD, user=config.PG_USUARIO,
                             password=config.PG_CLAVE,
@@ -79,7 +63,6 @@ def existe_esquema(conn):
 
 
 def datos_iniciales():
-    """50 eventos en el mes configurado: los primeros con dos ocurrencias, el resto con una."""
     from datetime import date
     eventos = []
     for i in range(1, config.NUM_EVENTOS + 1):
@@ -93,7 +76,6 @@ def datos_iniciales():
 
 
 def crear_base(conn):
-    """Borra las tablas del SRB, las vuelve a crear y carga los datos iniciales (una transacción)."""
     eventos = datos_iniciales()
     with conn.cursor() as cur:
         cur.execute(ESQUEMA)
@@ -110,8 +92,6 @@ def crear_base(conn):
 
 
 def leer_eventos(cur, mes=None):
-    """Eventos (con sus ocurrencias) como diccionarios listos para JSON, en orden E1, E2, ...
-    Con 'mes' solo los que tienen al menos una ocurrencia en ese mes."""
     filtro = ""
     parametros = ()
     if mes is not None:

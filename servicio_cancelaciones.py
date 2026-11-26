@@ -1,18 +1,3 @@
-"""
-ServicioCancelaciones · VM2
-
-Recibe las cancelaciones que el GT empuja por PUSH/PULL (patrón pipeline), envía a
-Persistencia la orden de liberación de asientos y, cuando Persistencia responde, publica la
-notificación al cliente por PUB/SUB. El tópico de cada notificación es el id del cliente
-(más ":"), de modo que cada cliente solo recibe las suyas.
-
-Es la parte asíncrona de la cancelación: el cliente ya recibió ACEPTADA del GT; la notificación
-llega cuando la liberación realmente quedó guardada en Persistencia.
-
-Si Persistencia no responde en 3 s se reintenta (hasta 3 veces) con el mismo id_solicitud.
-Como Persistencia guarda la respuesta de cada id_solicitud, un reintento nunca libera dos veces.
-"""
-
 import json
 import time
 from dataclasses import asdict
@@ -32,11 +17,11 @@ class ServicioCancelaciones:
 
     def __init__(self):
         self.ctx = zmq.Context()
-        self.sock_gt = self.ctx.socket(zmq.PULL)                  # PULL: órdenes que empuja el GT
+        self.sock_gt = self.ctx.socket(zmq.PULL)
         self.sock_gt.bind(f"tcp://*:{config.PUERTO_CANCELACIONES}")
-        self.sock_notificaciones = self.ctx.socket(zmq.PUB)       # PUB: notificaciones a clientes
+        self.sock_notificaciones = self.ctx.socket(zmq.PUB)
         self.sock_notificaciones.bind(f"tcp://*:{config.PUERTO_NOTIFICACIONES}")
-        self.sock_persistencia = self._nuevo_req()                # REQ: orden a Persistencia
+        self.sock_persistencia = self._nuevo_req()
 
     def _nuevo_req(self):
         sock = self.ctx.socket(zmq.REQ)
@@ -46,7 +31,6 @@ class ServicioCancelaciones:
         return sock
 
     def procesar_cancelacion(self, solicitud):
-        """Orden de liberación a Persistencia, con reintentos si no responde."""
         for intento in range(1, config.REINTENTOS_CANCELACIONES + 1):
             try:
                 self.sock_persistencia.send_string(json.dumps(
@@ -61,7 +45,6 @@ class ServicioCancelaciones:
                          {"motivo": "persistencia no responde", "reintentar": True})
 
     def notificar_cliente(self, id_cliente, respuesta):
-        """Publica la Respuesta con el id del cliente como tópico."""
         self.sock_notificaciones.send_multipart([f"{id_cliente}:".encode(),
                                                  json.dumps(asdict(respuesta), default=str).encode()])
 

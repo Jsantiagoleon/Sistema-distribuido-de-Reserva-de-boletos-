@@ -1,27 +1,3 @@
-"""
-ClienteCarga · VM1
-
-Un proceso = un cliente. Genera solicitudes de consulta, reserva, modificación y cancelación
-con porcentajes y ritmo parametrizables, mide el tiempo de respuesta de cada una y recibe las
-notificaciones de cancelación.
-
-Canales
-  * Síncrono: REQ -> ROUTER del GT (consulta, reserva, modificación).
-  * Asíncrono: DEALER -> ROUTER del GT (cancelación). El GT responde ACEPTADA al instante y,
-    más tarde, el Servicio de Cancelaciones publica la notificación (SUB con el id del cliente).
-
-Tolerancia a fallas (transparente para el usuario)
-  * Si el GT no responde en 5 s, el cliente reenvía la MISMA solicitud (mismo id_solicitud) al otro
-    GT de la lista --gt y se queda con él. Persistencia reconoce el id_solicitud y no repite la
-    operación si ya se había ejecutado.
-  * Si la notificación de una cancelación no llega en 10 s, reenvía la cancelación (mismo id).
-
-Ejemplos
-    python3 cliente.py --id C1 --rpm 20 --duracion 3                         50% consultas, 50% reservas
-    python3 cliente.py --id C3 --pct-consulta 40 --pct-reserva 30 --pct-modificacion 20 --pct-cancelacion 10
-    python3 cliente.py --id C1 --gt tcp://127.0.0.1:5557                     solo un GT (sin reintento)
-"""
-
 import argparse
 import itertools
 import json
@@ -43,7 +19,6 @@ consecutivo = itertools.count(1)
 
 
 def direccion_asincrona(direccion_gt):
-    """El canal asíncrono del GT usa el puerto síncrono + 1."""
     base, puerto = direccion_gt.rsplit(":", 1)
     return f"{base}:{int(puerto) + 1}"
 
@@ -57,9 +32,9 @@ class ClienteCarga:
         self.rpm = rpm
         self.pct_consulta, self.pct_reserva = pct_consulta, pct_reserva
         self.pct_modificacion, self.pct_cancelacion = pct_modificacion, pct_cancelacion
-        self.modo = modo                                   # fija | cerrado
+        self.modo = modo
         self.dirs_gt = list(dirs_gt or config.DIRS_GT)
-        self.gt_actual = 0                                 # índice del GT en uso (se queda con él)
+        self.gt_actual = 0
         self.silencioso = silencioso
         self.ctx = zmq.Context.instance()
 
@@ -67,37 +42,33 @@ class ClienteCarga:
         self.sock_async = None
         self._abrir_canales()
 
-        # Notificaciones: SUB suscrito al tópico "<id_cliente>:"
         self.sock_notif = self.ctx.socket(zmq.SUB)
         self.sock_notif.setsockopt_string(zmq.SUBSCRIBE, f"{id_cliente}:")
         self.sock_notif.connect(dir_notificaciones)
 
-        self.reservas = []          # reservas propias confirmadas (para modificar y cancelar)
-        self.cancelaciones = {}     # id_solicitud -> dict(t0, solicitud, reenvios)
-        self.notificaciones = []    # notificaciones recibidas (Respuesta), útil en las pruebas
+        self.reservas = []
+        self.cancelaciones = {}
+        self.notificaciones = []
 
         os.makedirs(config.DIR_RESULTADOS, exist_ok=True)
         self.f_csv = open(os.path.join(config.DIR_RESULTADOS, f"resultados_{id_cliente}.csv"),
                           "a", buffering=1, encoding="utf-8")
         if self.f_csv.tell() == 0:
             self.f_csv.write("hora,id_solicitud,tipo,estado,tiempo_ms,intentos\n")
-        time.sleep(0.3)             # deja que el SUB termine de conectarse antes de la primera cancelación
+        time.sleep(0.3)
 
-    # ------------------------------------------------------------ canales
     @property
     def gt(self):
         return self.dirs_gt[self.gt_actual]
 
     def _abrir_canales(self):
-        """(Re)crea los sockets hacia el GT actual. Un REQ que no recibió su respuesta queda
-        inutilizable, por eso se reabre tras cada timeout."""
         for s in (self.sock_sync, self.sock_async):
             if s is not None:
                 s.close()
         self.sock_sync = self.ctx.socket(zmq.REQ)
         self.sock_sync.setsockopt(zmq.RCVTIMEO, config.TIMEOUT_CLIENTE_MS)
         self.sock_sync.setsockopt(zmq.LINGER, 0)
-        self.sock_sync.setsockopt(zmq.REQ_CORRELATE, 1)     # descarta respuestas de solicitudes anteriores
+        self.sock_sync.setsockopt(zmq.REQ_CORRELATE, 1)
         self.sock_sync.setsockopt(zmq.REQ_RELAXED, 1)
         self.sock_sync.connect(self.gt)
         self.sock_async = self.ctx.socket(zmq.DEALER)
@@ -119,10 +90,7 @@ class ClienteCarga:
         return Solicitud(f"{self.id_cliente}-{ejecucion}-{next(consecutivo):04d}",
                          self.id_cliente, tipo, **campos)
 
-    # ------------------------------------------------------------ canal síncrono
     def enviar_sincrono(self, solicitud):
-        """Envía la solicitud al GT y espera 5 s. Sin respuesta, reenvía la misma solicitud al
-        otro GT (a lo sumo MAX_INTENTOS_CLIENTE veces). Devuelve (Respuesta | None, intentos)."""
         maximo = config.MAX_INTENTOS_CLIENTE if len(self.dirs_gt) > 1 else 1
         for intento in range(1, maximo + 1):
             try:
@@ -156,7 +124,6 @@ class ClienteCarga:
         return respuesta
 
     def enviar_modificacion(self, id_reserva, asientos=None, num_ocurrencia=None):
-        """Cambia el número de asientos O pasa la reserva a otra ocurrencia (no ambos)."""
         solicitud = self.nueva_solicitud(MODIFICACION, id_reserva=id_reserva, asientos=asientos,
                                          num_ocurrencia=num_ocurrencia)
         cambio = f"{asientos} asientos" if asientos is not None else f"a la ocurrencia {num_ocurrencia}"
@@ -168,10 +135,7 @@ class ClienteCarga:
                     r["num_ocurrencia"] = respuesta.datos.get("num_ocurrencia", r["num_ocurrencia"])
         return respuesta
 
-    # ------------------------------------------------------------ canal asíncrono
     def enviar_cancelacion(self, id_reserva):
-        """Cancelación asíncrona: el GT contesta ACEPTADA de inmediato; la notificación de que la
-        liberación quedó guardada llega después por el canal SUB (ver recibir_notificacion)."""
         solicitud = self.nueva_solicitud(CANCELACION, id_reserva=id_reserva)
         inicio = time.perf_counter()
         respuesta, intentos = self.enviar_asincrono(solicitud)
@@ -196,7 +160,6 @@ class ClienteCarga:
         return None, maximo
 
     def recibir_notificacion(self, espera_ms=0):
-        """Lee una notificación si hay (espera hasta espera_ms). Devuelve la Respuesta o None."""
         self.vaciar_acuses_tardios()
         if not self.sock_notif.poll(espera_ms):
             return None
@@ -204,7 +167,7 @@ class ClienteCarga:
         respuesta = Respuesta(**json.loads(cuerpo))
         pendiente = self.cancelaciones.pop(respuesta.id_solicitud, None)
         if pendiente is None:
-            return respuesta        # notificación repetida (por un reenvío): ya estaba atendida
+            return respuesta
         ms = (time.perf_counter() - pendiente["t0"]) * 1000
         self.notificaciones.append(respuesta)
         self.registrar_resultado(pendiente["solicitud"], respuesta, ms, "notificación de cancelación",
@@ -212,13 +175,10 @@ class ClienteCarga:
         return respuesta
 
     def vaciar_acuses_tardios(self):
-        """Descarta los ACEPTADA que llegan después de un reenvío (ya no hacen falta)."""
         while self.sock_async.poll(0):
             self.sock_async.recv_string()
 
     def revisar_cancelaciones(self):
-        """Atiende las notificaciones que lleguen y reenvía las cancelaciones cuya notificación
-        tarda más de 10 s (mismo id_solicitud: Persistencia no libera dos veces)."""
         while self.recibir_notificacion(0) is not None:
             pass
         ahora = time.perf_counter()
@@ -236,9 +196,7 @@ class ClienteCarga:
                        f"{config.TIMEOUT_NOTIFICACION_MS / 1000:.0f} s: reenvía la cancelación")
             self.sock_async.send_string(json.dumps(asdict(p["solicitud"])))
 
-    # ------------------------------------------------------------ registro
     def registrar_resultado(self, solicitud, respuesta, ms, detalle, intentos=1, tipo=None):
-        """Guarda el tiempo de respuesta en resultados_<id>.csv e imprime la línea de log."""
         tipo = tipo or solicitud.tipo
         estado = respuesta.estado if respuesta else "sin_respuesta"
         self.f_csv.write(f"{time.time():.3f},{solicitud.id_solicitud},{tipo},{estado},"
@@ -248,10 +206,7 @@ class ClienteCarga:
         self.decir(f"{tipo:<13} {solicitud.id_solicitud:<17} {estado:<13} {ms / 1000:.4f} s  "
                    f"{detalle}{motivo}{extra}")
 
-    # ------------------------------------------------------------ carga
     def siguiente_solicitud(self):
-        """Elige el tipo según los porcentajes. Modificar o cancelar exige tener una reserva propia;
-        si todavía no hay ninguna, el cliente reserva."""
         r = random.randint(1, 100)
         if r <= self.pct_consulta:
             return self.enviar_consulta(config.MES)
@@ -277,7 +232,6 @@ class ClienteCarga:
         return self.enviar_cancelacion(reserva["id_reserva"])
 
     def esperar(self, segundos):
-        """Espera atendiendo las notificaciones que lleguen mientras tanto."""
         fin = time.time() + segundos
         while True:
             self.revisar_cancelaciones()

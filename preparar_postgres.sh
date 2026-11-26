@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Prepara PostgreSQL en la VM3 (Ubuntu): instala el servidor, crea el usuario "srb" y la base "srb"
-# e instala el driver de Python. Necesita sudo. Se puede ejecutar más de una vez sin problema.
-#
-#   ./preparar_postgres.sh
-#
-# Después: python3 generar_bd.py   (crea las tablas y los datos iniciales)
 set -euo pipefail
 cd "$(dirname "$0")"
 
